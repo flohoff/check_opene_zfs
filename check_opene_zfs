@@ -54,6 +54,10 @@ package SNMP;
 			Community => $community
 		);
 
+		if (!defined($session)) {
+			die($error);
+		}
+
 		$self->{netsnmp}=$session;
 	}
 
