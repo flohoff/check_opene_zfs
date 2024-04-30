@@ -112,7 +112,7 @@ package SNMP;
 	sub value_decode_table {
 		my ($self, $value, $def) = @_;
 
-		my $tvalue=$def->{values}{$value};
+		my $tvalue=$def->{values}{$value} // "unknown";
 		if (defined($tvalue)) {
 			return { value => $value, string => $tvalue, full => sprintf("%s(%d)", $tvalue, $value) };
 		}
