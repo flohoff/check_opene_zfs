@@ -11,6 +11,13 @@ to Nagios/Icinga2 performance data
         zfsL2ARCHits=97583282c;; zfsL2ARCMisses=68394340c;; 
         zfsL2ARCReads=48119966519c;; zfsL2ARCWrites=95131924067c;;
 
+Versions
+========
+
+From version 30 on OpenE broke the SNMP Mibs by making non backward
+compatible changes to the mib. See:
+
+https://kb.open-e.com/jdss-changes-for-zfs-parameters-in-nymnetworks-mib-after-updating-to-up30r2_3541.html
 
 Dependencies
 ============
