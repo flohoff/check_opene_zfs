@@ -4,38 +4,12 @@ package SNMP;
 	use strict;
 	use Data::Dumper;
 	use Net::SNMP 6.0 qw( :snmp DEBUG_ALL ENDOFMIBVIEW );	
-
-	my $nametable={
-		"sysDescr"		=> { oid => ".1.3.6.1.2.1.1.1" },
-		"sysName"		=> { oid => ".1.3.6.1.2.1.1.5" },
-
-		"zfsFilesystemName"	=> { oid => ".1.3.6.1.4.1.25359.1.1.1" },
-		"zfsPoolHealth"		=> { oid => ".1.3.6.1.4.1.25359.1.1.4" ,
-							value => 'table',
-							values => {
-								1 => "online",
-								2 => "degraded",
-								3 => "faulted",
-								4 => "unknown"
-							}
-						},
-		"zfsARCSizeKB"		=> { oid => ".1.3.6.1.4.1.25359.1.2.1" },
-		"zfsARCMetadataSizeKB"	=> { oid => ".1.3.6.1.4.1.25359.1.2.2" },
-		"zfsARCDataSizeKB"	=> { oid => ".1.3.6.1.4.1.25359.1.2.3" },
-		"zfsARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.2.4" },
-		"zfsARCMisses" 		=> { oid => ".1.3.6.1.4.1.25359.1.2.5" },
-		"zfsARCTargetSize"	=> { oid => ".1.3.6.1.4.1.25359.1.2.6" },
-		"zfsARCMru"		=> { oid => ".1.3.6.1.4.1.25359.1.2.7" },
-		"zfsL2ARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.3.1" },
-		"zfsL2ARCMisses"	=> { oid => ".1.3.6.1.4.1.25359.1.3.2" },
-		"zfsL2ARCReads"		=> { oid => ".1.3.6.1.4.1.25359.1.3.3" },
-		"zfsL2ARCWrites"	=> { oid => ".1.3.6.1.4.1.25359.1.3.4" }
-	};
-
 	sub new {
-		my ($class, $host, $community) = @_;
+		my ($class, $host, $community, $mib) = @_;
 
-		my $self={};
+		my $self={
+			nametable => $mib
+		};
 		bless $self, $class;
 
 		$self->reversemap();
@@ -63,8 +37,8 @@ package SNMP;
 
 	sub reversemap {
 		my ($self) = @_;
-		foreach my $key ( keys %{$nametable} ) {
-			my $value=$nametable->{$key};
+		foreach my $key ( keys %{$self->{nametable}} ) {
+			my $value=$self->{nametable}{$key};
 			$self->{reversetable}{$value->{oid}}=$key;
 		}
 	}
@@ -73,7 +47,7 @@ package SNMP;
 		my ($self, $mixname) = @_;
 
 		my ($name, $instance) = ($mixname =~ /^([^.]+)([\d\.]*)$/);
-		my $oid=$nametable->{$name}{oid} . $instance;
+		my $oid=$self->{nametable}{$name}{oid} . $instance;
 
 		#printf("Mixname $mixname Name: $name instance $instance oid $oid\n");
 
@@ -131,7 +105,7 @@ package SNMP;
 	sub value_decode {
 		my ($self, $name, $value) = @_;
 
-		my $def=$nametable->{$name};
+		my $def=$self->{nametable}{$name};
 		if (!defined($def) || !defined($def->{value})) {
 			return { value => $value };
 		}
@@ -148,7 +122,7 @@ package SNMP;
 	sub instance_decode {
 		my ($self, $name, $instance) = @_;
 
-		my $def=$nametable->{$name};
+		my $def=$self->{nametable}{$name};
 		if (!defined($def) || !defined($def->{instance})) {
 			return $instance;
 		}
@@ -295,6 +269,34 @@ use Monitoring::Plugin;
 use Getopt::Long::Descriptive;
 use FindBin qw($Bin $Script);
 
+my $mib_opene_until30={
+	"sysDescr"		=> { oid => ".1.3.6.1.2.1.1.1" },
+	"sysName"		=> { oid => ".1.3.6.1.2.1.1.5" },
+
+	"zfsFilesystemName"	=> { oid => ".1.3.6.1.4.1.25359.1.1.1" },
+	"zfsPoolHealth"		=> { oid => ".1.3.6.1.4.1.25359.1.1.4" ,
+						value => 'table',
+						values => {
+							1 => "online",
+							2 => "degraded",
+							3 => "faulted",
+							4 => "unknown"
+						}
+					},
+	"zfsARCSizeKB"		=> { oid => ".1.3.6.1.4.1.25359.1.2.1" },
+	"zfsARCMetadataSizeKB"	=> { oid => ".1.3.6.1.4.1.25359.1.2.2" },
+	"zfsARCDataSizeKB"	=> { oid => ".1.3.6.1.4.1.25359.1.2.3" },
+	"zfsARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.2.4" },
+	"zfsARCMisses" 		=> { oid => ".1.3.6.1.4.1.25359.1.2.5" },
+	"zfsARCTargetSize"	=> { oid => ".1.3.6.1.4.1.25359.1.2.6" },
+	"zfsARCMru"		=> { oid => ".1.3.6.1.4.1.25359.1.2.7" },
+	"zfsL2ARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.3.1" },
+	"zfsL2ARCMisses"	=> { oid => ".1.3.6.1.4.1.25359.1.3.2" },
+	"zfsL2ARCReads"		=> { oid => ".1.3.6.1.4.1.25359.1.3.3" },
+	"zfsL2ARCWrites"	=> { oid => ".1.3.6.1.4.1.25359.1.3.4" }
+};
+
+
 my ($opt, $usage) = describe_options(
 	"$Script %o <some-arg>",
 	[ 'host|H=s',		"OpenE hostname", { required => 1 } ],
@@ -311,7 +313,7 @@ my $np = Monitoring::Plugin->new(
 	timeout => $opt->timeout
 );
 
-my $snmp=new SNMP($opt->host, $opt->community);
+my $snmp=new SNMP($opt->host, $opt->community, $mib_opene_until30);
 
 my $names=$snmp->get_table("zfsFilesystemName");
 my $states=$snmp->get_table("zfsPoolHealth");
