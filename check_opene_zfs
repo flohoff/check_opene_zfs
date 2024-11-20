@@ -269,7 +269,7 @@ use Monitoring::Plugin;
 use Getopt::Long::Descriptive;
 use FindBin qw($Bin $Script);
 
-my $mib_opene_until30={
+my $mib_opene_upto_29r4={
 	"sysDescr"		=> { oid => ".1.3.6.1.2.1.1.1" },
 	"sysName"		=> { oid => ".1.3.6.1.2.1.1.5" },
 
@@ -290,11 +290,121 @@ my $mib_opene_until30={
 	"zfsARCMisses" 		=> { oid => ".1.3.6.1.4.1.25359.1.2.5" },
 	"zfsARCTargetSize"	=> { oid => ".1.3.6.1.4.1.25359.1.2.6" },
 	"zfsARCMru"		=> { oid => ".1.3.6.1.4.1.25359.1.2.7" },
+
 	"zfsL2ARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.3.1" },
 	"zfsL2ARCMisses"	=> { oid => ".1.3.6.1.4.1.25359.1.3.2" },
 	"zfsL2ARCReads"		=> { oid => ".1.3.6.1.4.1.25359.1.3.3" },
 	"zfsL2ARCWrites"	=> { oid => ".1.3.6.1.4.1.25359.1.3.4" }
 };
+
+my $mib_opene_from_30={
+	"sysDescr"		=> { oid => ".1.3.6.1.2.1.1.1" },
+	"sysName"		=> { oid => ".1.3.6.1.2.1.1.5" },
+
+	"zfsFilesystemName"	=> { oid => ".1.3.6.1.4.1.25359.1.1.2" },
+	"zfsPoolHealth"		=> { oid => ".1.3.6.1.4.1.25359.1.1.7" ,
+						value => 'table',
+						values => {
+							1 => "online",
+							2 => "degraded",
+							3 => "faulted",
+							4 => "unknown"
+						}
+					},
+	"zfsARCSize"		=> { oid => ".1.3.6.1.4.1.25359.1.4.1" },
+	"zfsARCMetadataSize"	=> { oid => ".1.3.6.1.4.1.25359.1.4.2" },
+	"zfsARCDataSize"	=> { oid => ".1.3.6.1.4.1.25359.1.4.3" },
+	"zfsARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.4.4" },
+	"zfsARCMisses" 		=> { oid => ".1.3.6.1.4.1.25359.1.4.5" },
+	"zfsARCTargetSize"	=> { oid => ".1.3.6.1.4.1.25359.1.4.6" },
+	"zfsARCMru"		=> { oid => ".1.3.6.1.4.1.25359.1.4.7" },
+
+	"zfsL2ARCHits"		=> { oid => ".1.3.6.1.4.1.25359.1.5.1" },
+	"zfsL2ARCMisses"	=> { oid => ".1.3.6.1.4.1.25359.1.5.2" },
+	"zfsL2ARCReads"		=> { oid => ".1.3.6.1.4.1.25359.1.5.3" },
+	"zfsL2ARCWrites"	=> { oid => ".1.3.6.1.4.1.25359.1.5.4" }
+};
+
+
+# This function checks whether the SNMP table zfsFilesystemName looks sane.
+# OpenE decided it was a good idea to reuse OIDs for different names and types
+# which one should NEVER do. So we have 2 conflicting mibs and no way to check
+# for the version of the Software as its not returned in iso or enterprises mib.
+#
+# So we try to guess - if zfsFilesystem names are all numeric - it seems to be
+# a newer openE version and most likely a broken SNMP mib.
+sub results_valid {
+	my ($names) = @_;
+
+	my @f=grep { /^\d+$/ }
+		map { $names->{$_}{value}{value} }
+		grep { /zfsFilesystem/ }
+		keys %{$names};
+
+	return scalar @f == 0;
+}
+
+sub read_arc_perfdata_new {
+	my ($snmp, $np) = @_;
+
+	my $l2arc = $snmp->get(
+			"zfsL2ARCHits",
+			"zfsL2ARCMisses",
+			"zfsL2ARCReads",
+			"zfsL2ARCWrites");
+	
+	$np->add_perfdata(label => "zfsL2ARCHits", value => $l2arc->{"zfsL2ARCHits"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCMisses", value => $l2arc->{"zfsL2ARCMisses"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCReads", value => $l2arc->{"zfsL2ARCReads"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCWrites", value => $l2arc->{"zfsL2ARCWrites"}{value}{value}, uom => 'c');
+
+	my $vars = $snmp->get("zfsARCSize",
+			"zfsARCMetadataSize",
+			"zfsARCDataSize",
+			"zfsARCHits",
+			"zfsARCMisses",
+			"zfsARCTargetSize",
+			"zfsARCMru");
+
+	$np->add_perfdata(label => "zfsARCSizeKB", value => int($vars->{"zfsARCSize"}{value}{value}/1024), uom => 'KB');
+	$np->add_perfdata(label => "zfsARCMetadataSizeKB", value => int($vars->{"zfsARCMetadataSize"}{value}{value}/1024), uom => 'KB');
+	$np->add_perfdata(label => "zfsARCDataSizeKB", value => int($vars->{"zfsARCDataSize"}{value}{value}/1024), uom => 'KB');
+	$np->add_perfdata(label => "zfsARCHits", value => $vars->{"zfsARCHits"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsARCMisses", value => $vars->{"zfsARCMisses"}{value}{value}, uom => 'c');
+}
+
+sub read_arc_perfdata_old {
+	my ($snmp, $np) = @_;
+
+	my $vars = $snmp->get("zfsARCSizeKB.0",
+			"zfsARCMetadataSizeKB.0",
+			"zfsARCDataSizeKB.0",
+			"zfsARCHits.0",
+			"zfsARCMisses.0",
+			"zfsARCTargetSize.0",
+			"zfsARCMru.0",
+			"zfsL2ARCHits.0",
+			"zfsL2ARCMisses.0",
+			"zfsL2ARCReads.0",
+			"zfsL2ARCWrites.0");
+
+	if ($vars->{"zfsARCSizeKB.0"}{value}{value} =~ /noSuchInstance/i) {
+		return;
+	}
+
+	$np->add_perfdata(label => "zfsARCSizeKB", value => $vars->{"zfsARCSizeKB.0"}{value}{value}, uom => 'KB');
+	$np->add_perfdata(label => "zfsARCMetadataSizeKB", value => $vars->{"zfsARCMetadataSizeKB.0"}{value}{value}, uom => 'KB');
+	$np->add_perfdata(label => "zfsARCDataSizeKB", value => $vars->{"zfsARCDataSizeKB.0"}{value}{value}, uom => 'KB');
+	$np->add_perfdata(label => "zfsARCHits", value => $vars->{"zfsARCHits.0"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsARCMisses", value => $vars->{"zfsARCMisses.0"}{value}{value}, uom => 'c');
+
+	$np->add_perfdata(label => "zfsL2ARCHits", value => $vars->{"zfsL2ARCHits.0"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCMisses", value => $vars->{"zfsL2ARCMisses.0"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCReads", value => $vars->{"zfsL2ARCReads.0"}{value}{value}, uom => 'c');
+	$np->add_perfdata(label => "zfsL2ARCWrites", value => $vars->{"zfsL2ARCWrites.0"}{value}{value}, uom => 'c');
+
+	return 1;
+}
 
 
 my ($opt, $usage) = describe_options(
@@ -313,11 +423,19 @@ my $np = Monitoring::Plugin->new(
 	timeout => $opt->timeout
 );
 
-my $snmp=new SNMP($opt->host, $opt->community, $mib_opene_until30);
-
+my $snmp=new SNMP($opt->host, $opt->community, $mib_opene_upto_29r4);
 my $names=$snmp->get_table("zfsFilesystemName");
-my $states=$snmp->get_table("zfsPoolHealth");
 
+my $openeversion=29;
+# OpenE >v30 returns bullshit with old OIDs. Check heuristically
+# and if the results looks bogus - try the new OID.
+if (!results_valid($names)) {
+	$np->add_message(OK, "New openE version detected");
+	$snmp=new SNMP($opt->host, $opt->community, $mib_opene_from_30);
+	$names=$snmp->get_table("zfsFilesystemName");
+	$openeversion=30;
+}
+my $states=$snmp->get_table("zfsPoolHealth");
 my $namehealth=$snmp->merge_tables_by_instance($names, $states);
 
 foreach ( values %{$namehealth} ) {
@@ -328,28 +446,11 @@ foreach ( values %{$namehealth} ) {
 			$_->{zfsPoolHealth}{full}));
 }
 
-my $vars = $snmp->get("zfsARCSizeKB.0",
-		"zfsARCMetadataSizeKB.0",
-		"zfsARCDataSizeKB.0",
-		"zfsARCHits.0",
-		"zfsARCMisses.0",
-		"zfsARCTargetSize.0",
-		"zfsARCMru.0",
-		"zfsL2ARCHits.0",
-		"zfsL2ARCMisses.0",
-		"zfsL2ARCReads.0",
-		"zfsL2ARCWrites.0");
-
-$np->add_perfdata(label => "zfsARCSizeKB", value => $vars->{"zfsARCSizeKB.0"}{value}{value}, uom => 'KB');
-$np->add_perfdata(label => "zfsARCMetadataSizeKB", value => $vars->{"zfsARCMetadataSizeKB.0"}{value}{value}, uom => 'KB');
-$np->add_perfdata(label => "zfsARCDataSizeKB", value => $vars->{"zfsARCDataSizeKB.0"}{value}{value}, uom => 'KB');
-
-$np->add_perfdata(label => "zfsARCHits", value => $vars->{"zfsARCHits.0"}{value}{value}, uom => 'c');
-$np->add_perfdata(label => "zfsARCMisses", value => $vars->{"zfsARCMisses.0"}{value}{value}, uom => 'c');
-$np->add_perfdata(label => "zfsL2ARCHits", value => $vars->{"zfsL2ARCHits.0"}{value}{value}, uom => 'c');
-$np->add_perfdata(label => "zfsL2ARCMisses", value => $vars->{"zfsL2ARCMisses.0"}{value}{value}, uom => 'c');
-$np->add_perfdata(label => "zfsL2ARCReads", value => $vars->{"zfsL2ARCReads.0"}{value}{value}, uom => 'c');
-$np->add_perfdata(label => "zfsL2ARCWrites", value => $vars->{"zfsL2ARCWrites.0"}{value}{value}, uom => 'c');
+if ($openeversion <= 29) {
+	read_arc_perfdata_old($snmp, $np);
+} else {
+	read_arc_perfdata_new($snmp, $np);
+}
 
 my ($code, $message) = $np->check_messages();
 $np->plugin_exit( $code, $message );

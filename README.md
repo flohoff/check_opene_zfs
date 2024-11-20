@@ -15,7 +15,15 @@ Versions
 ========
 
 From version 30 on OpenE broke the SNMP Mibs by making non backward
-compatible changes to the mib. See:
+compatible changes to the mib. The knowledge base article mentions
+"rearranging SNMP oids" which one does not do under any circumstance.
+Additonally there is no way to read out the version supported. So 
+it involves some guessing by reading out values and detecting brokeness.
+
+If you have no clue about SNMP, please do not write mibs, decide on OIDs
+and renaming of stuff.
+
+See:
 
 https://kb.open-e.com/jdss-changes-for-zfs-parameters-in-nymnetworks-mib-after-updating-to-up30r2_3541.html
 
